@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 
 //进阶要求，实现传感器容差
 public class recognitionPlus {
-    public static RecognitionResult recognize(List<Layer> openLayer, List<Layer> closeLayer, List<Goods> goodsList, List<Stock> stockList){
+    public static RecognitionResult recognize(int sensorTolerance, List<Layer> openLayer, List<Layer> closeLayer, List<Goods> goodsList, List<Stock> stockList){
         RecognitionResult result=new RecognitionResult();
         List<RecognitionException> exceptions=new ArrayList<>();
         final List<RecognitionItem>[] items = new List[]{new ArrayList<>()};
@@ -35,11 +35,11 @@ public class recognitionPlus {
                         //前后重量不一致即说明有商品出售或异常
                         //有商品出售
                         //无购物情况是[-10,10]，因此大于10就算有购物，小于-10是异物异常
-                        if(diff>10){
+                        if(diff>sensorTolerance){
                             layer1.setIndex(open.getIndex());
                             layer1.setWeight(diff);
                             layers.add(layer1);
-                        } else if (diff < -10) {
+                        } else if (diff < -1*sensorTolerance) {
                             //异物异常
                             exceptions.add(new RecognitionException(open.getIndex(), ExceptionEnum.differentException, open.getWeight(), close.getWeight()));
                         }
@@ -53,7 +53,7 @@ public class recognitionPlus {
                     .filter(stock -> stock.getLayer()==layer.getIndex())
                     .collect(Collectors.toList());
             // 尝试找到匹配的商品
-            List<Map<String, Integer>> list = match(layer.getWeight(), layerStocks, goodsMap);
+            List<Map<String, Integer>> list = match(sensorTolerance,layer.getWeight(), layerStocks, goodsMap);
 
             if(list.isEmpty()||list.size()>1||(list.size()==1 && list.get(0).isEmpty())){
                 exceptions.add(new RecognitionException(layer.getIndex(), ExceptionEnum.UnableRecognizeException,0,0));
@@ -74,17 +74,17 @@ public class recognitionPlus {
         return result;
     }
 
-    public static List<Map<String, Integer>> match(int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap){
+    public static List<Map<String, Integer>> match(int sensorTolerance,int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap){
         List<Map<String, Integer>> result = new ArrayList<>();
         Map<String,Integer> tempMap=new HashMap<>();
-        matchHelper(diff,layerStocks,goodsMap,0,tempMap,result);
+        matchHelper(sensorTolerance,diff,layerStocks,goodsMap,0,tempMap,result);
 
         return result;
     }
-    public static void matchHelper(int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap,int start,Map<String,Integer> tempMap,List<Map<String, Integer>> result){
+    public static void matchHelper(int sensorTolerance,int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap,int start,Map<String,Integer> tempMap,List<Map<String, Integer>> result){
 
         //波动是[-10,10]
-        if(diff<=10&&diff>=-10){
+        if(diff<=sensorTolerance&&diff>=-1*sensorTolerance){
             // 目标和达到，添加当前的tempMap到结果中，并返回
             result.add(new HashMap<>(tempMap));
             return;
@@ -94,7 +94,11 @@ public class recognitionPlus {
             if(diff-goods.getWeight()>=0){
                 //尝试添加当前索引
                 tempMap.put(goods.getId(),tempMap.getOrDefault(goods.getId(),0)+1);
-                matchHelper(diff-goods.getWeight(),layerStocks,goodsMap,i,tempMap,result);
+                //商品数量不能超过层架的数量
+                if(tempMap.get(goods.getId())<=layerStocks.get(i).getNum()){
+                    matchHelper(sensorTolerance,diff-goods.getWeight(),layerStocks,goodsMap,i,tempMap,result);
+                }
+
                 // 回溯，移除最后一个元素
                 tempMap.put(goods.getId(),tempMap.get(goods.getId())-1);
                 if(tempMap.get(goods.getId())==0){
@@ -123,6 +127,8 @@ public class recognitionPlus {
     }
 
     public static void main(String[] args){
+        //传感器容差为10
+        int sensorTolerance=10;
 
         List<Layer> open=new ArrayList<>();
         open.add(new Layer(1,2000));
@@ -137,9 +143,11 @@ public class recognitionPlus {
         open.add(new Layer(10,2000));
 
         List<Layer> close=new ArrayList<>();
-        close.add(new Layer(1,2000));
+        close.add(new Layer(1,1399));
+//        close.add(new Layer(1,1340));
+// 验证货物超过层架的数量的时候，即会报无法识别的错误,因为1340说明取了11个商品1，而层架1上只有10个商品1
         close.add(new Layer(2,2000));
-        close.add(new Layer(3,1802));
+        close.add(new Layer(3,1802));//实现传感器的容差
         close.add(new Layer(4,2000));
         close.add(new Layer(5,2000));
         close.add(new Layer(6,4000));
@@ -172,7 +180,7 @@ public class recognitionPlus {
         stockList.add(new Stock("000005",4,9));
 
 
-        RecognitionResult recognitionResult=recognize(open,close,goodsList,stockList);
+        RecognitionResult recognitionResult=recognize(sensorTolerance,open,close,goodsList,stockList);
         System.out.println(recognitionResult);
 
     }
