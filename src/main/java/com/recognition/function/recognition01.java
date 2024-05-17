@@ -7,13 +7,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-
-//取的商品是一样的情况
-public class recognition {
-
+//实现多个商品的购买
+public class recognition01 {
     public static RecognitionResult recognize(List<Layer> openLayer, List<Layer> closeLayer, List<Goods> goodsList, List<Stock> stockList){
         RecognitionResult result=new RecognitionResult();
         List<RecognitionException> exceptions=new ArrayList<>();
@@ -55,11 +52,13 @@ public class recognition {
                     .filter(stock -> stock.getLayer()==layer.getIndex())
                     .collect(Collectors.toList());
             // 尝试找到匹配的商品
-            RecognitionItem matchedItem = match(layer.getWeight(), layerStocks, goodsMap);
-            if (matchedItem != null) {
-                items[0] =addItem(items[0],matchedItem);
-            }else {
+            List<Map<String, Integer>> list = match(layer.getWeight(), layerStocks, goodsMap);
+
+            if(list.isEmpty()||list.size()>1||(list.size()==1 && list.get(0).isEmpty())){
                 exceptions.add(new RecognitionException(layer.getIndex(), ExceptionEnum.UnableRecognizeException,0,0));
+            }else{
+                Map<String,Integer> temp=list.get(0);
+                items[0]=addItem(items[0],temp);
             }
         });
         result.setExceptions(exceptions);
@@ -74,41 +73,49 @@ public class recognition {
         return result;
     }
 
-    public static RecognitionItem match(int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap){
-        for(Stock stock:layerStocks){
-            Goods goods = goodsMap.get(stock.getGoodsId());
-            if (goods != null && diff % goods.getWeight() == 0) {
-                int num = diff / goods.getWeight();
-                if (num <= stock.getNum()) {
-                    RecognitionItem item = new RecognitionItem();
-                    item.setGoodsId(goods.getId());
-                    item.setNum(num);
-                    return item;
+    public static List<Map<String, Integer>> match(int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap){
+        List<Map<String, Integer>> result = new ArrayList<>();
+        Map<String,Integer> tempMap=new HashMap<>();
+        matchHelper(diff,layerStocks,goodsMap,0,tempMap,result);
+
+        return result;
+    }
+    public static void matchHelper(int diff, List<Stock> layerStocks, Map<String, Goods> goodsMap,int start,Map<String,Integer> tempMap,List<Map<String, Integer>> result){
+
+        if(diff==0){
+            // 目标和达到，添加当前的tempMap到结果中，并返回
+            result.add(new HashMap<>(tempMap));
+            return;
+        }
+        for(int i=start;i<layerStocks.size();i++){
+            Goods goods=goodsMap.get(layerStocks.get(i).getGoodsId());
+            if(diff-goods.getWeight()>=0){
+                //尝试添加当前索引
+                tempMap.put(goods.getId(),tempMap.getOrDefault(goods.getId(),0)+1);
+                matchHelper(diff-goods.getWeight(),layerStocks,goodsMap,i,tempMap,result);
+                // 回溯，移除最后一个元素
+                tempMap.put(goods.getId(),tempMap.get(goods.getId())-1);
+                if(tempMap.get(goods.getId())==0){
+                    tempMap.remove(goods.getId());
                 }
             }
         }
-
-        return null;
     }
 
-    public static List<RecognitionItem> addItem(List<RecognitionItem> recognitionItems, RecognitionItem matchedItem){
-        /*AtomicBoolean flag= new AtomicBoolean(true);
-        recognitionItems.forEach(recognitionItem -> {
-            if(recognitionItem.getGoodsId()==matchedItem.getGoodsId()){
-                recognitionItem.setNum(recognitionItem.getNum()+matchedItem.getNum());
-                flag.set(false);
-            }
-        });
-        if(flag.get()==true){
-            recognitionItems.add(matchedItem);
-        }*/
+    public static List<RecognitionItem> addItem(List<RecognitionItem> recognitionItems, Map<String,Integer> temp){
+        //如果recognitionItems存在已经存在该商品的数量了，就在这个基础上添加数量
         for (int i=0;i<recognitionItems.size();i++){
-            if(recognitionItems.get(i).getGoodsId()==matchedItem.getGoodsId()){
-                recognitionItems.get(i).setNum(recognitionItems.get(i).getNum()+matchedItem.getNum());
-                return recognitionItems;
+            if(temp.containsKey(recognitionItems.get(i).getGoodsId())){
+                recognitionItems.get(i).setNum(recognitionItems.get(i).getNum()+temp.get(recognitionItems.get(i).getGoodsId()));
+                temp.remove(recognitionItems.get(i).getGoodsId());
             }
         }
-        recognitionItems.add(matchedItem);
+        if(!temp.isEmpty()){
+            for(Map.Entry<String,Integer> entry:temp.entrySet()){
+                recognitionItems.add(new RecognitionItem(entry.getKey(),entry.getValue()));
+            }
+
+        }
         return recognitionItems;
 
     }
@@ -130,7 +137,7 @@ public class recognition {
         List<Layer> close=new ArrayList<>();
         close.add(new Layer(1,2000));
         close.add(new Layer(2,2000));
-        close.add(new Layer(3,1877));
+        close.add(new Layer(3,1809));
         close.add(new Layer(4,2000));
         close.add(new Layer(5,2000));
         close.add(new Layer(6,4000));
